@@ -133,30 +133,17 @@ function Invoke-VcpkgInstall
 # with "C1083: Cannot open include file: 'H5LTpublic.h'".
 Invoke-VcpkgInstall -Arguments @("install", "--triplet", $platform, "pthreads", "libjpeg-turbo", "tiff", "libpng", "glfw3", "libusb", "fftw3", "libxml2", "portaudio", "nng", "zstd", "armadillo", "opencl", "curl[ssl]", "hdf5[hl]")
 
-# Entirely for UHD...
+# Entirely for UHD... Skip it!
 if($platform -eq "x64-windows" -or $platform -eq "x86-windows")
 {
-    Invoke-VcpkgInstall -Arguments @("install", "--triplet", $platform, "boost-chrono", "boost-date-time", "boost-filesystem", "boost-program-options", "boost-system", "boost-serialization", "boost-thread", "boost-test", "boost-format", "boost-asio", "boost-math", "boost-graph", "boost-units", "boost-lockfree", "boost-circular-buffer", "boost-assign", "boost-dll")
+    Write-Output "Skipping UHD boost dependencies."
+    # Invoke-VcpkgInstall -Arguments @("install", "--triplet", $platform, "boost-chrono", "boost-date-time", "boost-filesystem", "boost-program-options", "boost-system", "boost-serialization", "boost-thread", "boost-test", "boost-format", "boost-asio", "boost-math", "boost-graph", "boost-units", "boost-lockfree", "boost-circular-buffer", "boost-assign", "boost-dll")
 }
 
 #Start Building Dependencies
 $null = mkdir build
 cd build
 $build_args="-DCMAKE_TOOLCHAIN_FILE=$($(Get-Item ..\scripts\buildsystems\vcpkg.cmake).FullName)", "-DVCPKG_TARGET_TRIPLET=$platform", "-DCMAKE_INSTALL_PREFIX=$($(Get-Item ..\installed\$platform).FullName)", "-DCMAKE_BUILD_TYPE=Release", "-A", $generator
-
-# UHD's CMake picks whatever Python it finds first, which on the hosted Windows
-# runners is a newer interpreter that does not have mako installed. UHD then
-# fails with "Dependencies for required component LibUHD not met". Pin the
-# interpreter that CI provisioned and installed mako into.
-if($env:SATDUMP_PYTHON_EXECUTABLE -and (Test-Path $env:SATDUMP_PYTHON_EXECUTABLE))
-{
-    Write-Output "Pinning Python for dependency builds: $($env:SATDUMP_PYTHON_EXECUTABLE)"
-    $build_args += "-DPYTHON_EXECUTABLE=$($env:SATDUMP_PYTHON_EXECUTABLE)", "-DRUNTIME_PYTHON_EXECUTABLE=$($env:SATDUMP_PYTHON_EXECUTABLE)", "-DPython3_EXECUTABLE=$($env:SATDUMP_PYTHON_EXECUTABLE)"
-}
-else
-{
-    Write-Warning "SATDUMP_PYTHON_EXECUTABLE not set; UHD may pick a Python without mako."
-}
 
 $standard_include=$(Get-Item ..\installed\$platform\include).FullName
 $pthread_lib=$(Get-Item ..\installed\$platform\lib\pthreadVC3.lib).FullName
@@ -167,8 +154,6 @@ if($env:PROCESSOR_ARCHITECTURE -ne $arch)
     $build_args += "-DCMAKE_SYSTEM_NAME=Windows", "-DCMAKE_SYSTEM_PROCESSOR=$arch", "-DCMAKE_CROSSCOMPILING=ON", "-DVCPKG_USE_HOST_TOOLS=ON", "-DVCPKG_HOST_TRIPLET=$host_triplet"
 }
 
-#TEMPORARY: Use an unmerged PR of LibUSB to allow setting RAW_IO on USB transferrs. This is needed to
-#           prevent sample drops on some Windows machines with USB SDRs
 Write-Output "Building libusb..."
 git clone https://github.com/HannesFranke-smartoptics/libusb -b raw_io_v2
 cd libusb\msvc
@@ -187,7 +172,7 @@ cd ..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "libusb")
 
 Write-Output "Building cpu_features..."
-git clone https://github.com/google/cpu_features # -b 0.9.1 (not released as of this writing)
+git clone https://github.com/google/cpu_features
 cd cpu_features
 git checkout 6aecde5
 $null = mkdir build
@@ -199,8 +184,7 @@ cd ..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "cpu_features")
 
 Write-Output "Building Volk..."
-#git clone https://github.com/gnuradio/volk --depth 1 -b v3.1.2
-git clone https://github.com/JVital2013/volk --depth 1 -b win-arm64 #Patches to fix NEON support on Windows
+git clone https://github.com/JVital2013/volk --depth 1 -b win-arm64
 cd volk
 $null = mkdir build
 cd build
@@ -211,8 +195,7 @@ cd ..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "volk")
 
 Write-Output "Building Airspy..."
-#git clone https://github.com/airspy/airspyone_host --depth 1 #-b v1.0.10
-git clone https://github.com/JVital2013/airspyone_host -b rawio #Enables RAW_IO to avoid sample drops
+git clone https://github.com/JVital2013/airspyone_host -b rawio
 cd airspyone_host\libairspy
 $null = mkdir build
 cd build
@@ -223,8 +206,7 @@ cd ..\..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "airspyone_host")
 
 Write-Output "Building Airspy HF..."
-#git clone https://github.com/airspy/airspyhf --depth 1 #-b 1.6.8
-git clone https://github.com/JVital2013/airspyhf -b rawio #Enables RAW_IO to avoid sample drops
+git clone https://github.com/JVital2013/airspyhf -b rawio
 cd airspyhf\libairspyhf
 $null = mkdir build
 cd build
@@ -235,8 +217,7 @@ cd ..\..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "airspyhf")
 
 Write-Output "Building RTL-SDR..."
-#git clone https://github.com/osmocom/rtl-sdr --depth 1 -b v2.0.2
-git clone https://github.com/JVital2013/librtlsdr -b rawio #Enables RAW_IO to avoid sample drops
+git clone https://github.com/JVital2013/librtlsdr -b rawio
 cd librtlsdr
 $null = mkdir build
 cd build
@@ -247,8 +228,7 @@ cd ..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "librtlsdr")
 
 Write-Output "Building HackRF..."
-#git clone https://github.com/greatscottgadgets/hackrf --depth 1 -b v2024.02.1
-git clone https://github.com/JVital2013/hackrf -b rawio #Enables RAW_IO to avoid sample drops
+git clone https://github.com/JVital2013/hackrf -b rawio
 cd hackrf\host\libhackrf
 $null = mkdir build
 cd build
@@ -261,7 +241,7 @@ Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "hackrf")
 Write-Output "Building libiio..."
 git clone https://github.com/analogdevicesinc/libiio --depth 1 -b v0.25
 cd libiio
-(Get-Content -raw CMakeLists.txt) -replace "check_symbol_exists\(libusb_get_version libusb.h HAS_LIBUSB_GETVERSION\)", "" | Set-Content -Encoding ASCII CMakeLists.txt #Needed for cross-compilation only
+(Get-Content -raw CMakeLists.txt) -replace "check_symbol_exists\(libusb_get_version libusb.h HAS_LIBUSB_GETVERSION\)", "" | Set-Content -Encoding ASCII CMakeLists.txt
 $null = mkdir build
 cd build
 cmake $build_args -DWITH_IIOD=OFF -DWITH_TESTS=OFF -DWITH_ZSTD=ON -DLIBUSB_INCLUDE_DIR="$($libusb_include)" -DLIBUSB_LIBRARIES="$($libusb_lib)" ..
@@ -281,21 +261,11 @@ cmake --install .
 cd ..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "libad9361-iio")
 
-# Not compatible with ARM at this time
 if($platform -eq "x64-windows" -or $platform -eq "x86-windows")
 {
     Write-Output "Building LimeSuite..."
-
-    # www.satdump.org now sits behind an Anubis proof-of-work challenge, so a
-    # plain Invoke-WebRequest returns an HTML page instead of the ZIP, and
-    # Expand-Archive then aborts the whole dependency build with
-    # "End of Central Directory record could not be found".
-    # This SDK is optional: validate the ZIP magic, try the mirror, and skip
-    # LimeSuite rather than failing the job (the plugin CMakeLists also skips
-    # itself when LimeSuite is absent).
     $fx3_ok = $false
-    foreach($fx3_url in @("https://github.com/myriadrf/LimeSuite/archive/refs/tags/v23.11.0/FX3-SDK.zip",
-                          "https://www.satdump.org/FX3-SDK.zip"))
+    foreach($fx3_url in @("https://github.com/myriadrf/LimeSuite/archive/refs/tags/v23.11.0/FX3-SDK.zip", "https://www.satdump.org/FX3-SDK.zip"))
     {
         try
         {
@@ -310,7 +280,7 @@ if($platform -eq "x64-windows" -or $platform -eq "x86-windows")
                     break
                 }
             }
-            Write-Warning "FX3-SDK from $fx3_url is not a valid ZIP (likely a bot-check page); trying next source"
+            Write-Warning "FX3-SDK from $fx3_url is not a valid ZIP; trying next source"
         }
         catch
         {
@@ -334,14 +304,11 @@ if($platform -eq "x64-windows" -or $platform -eq "x86-windows")
     }
     else
     {
-        Write-Warning "Skipping LimeSuite: the FX3 SDK is unavailable. LimeSDR support will be disabled for this build."
+        Write-Warning "Skipping LimeSuite: the FX3 SDK is unavailable."
     }
 }
 
 Write-Output "Building bladeRF..."
-# $fx3_arg only exists when the FX3 SDK downloaded successfully, but bladeRF
-# references it unconditionally. Initialise it so an unavailable SDK leaves the
-# build with the default (no FX3 path) instead of throwing.
 $fx3_arg = ""
 git clone https://github.com/Nuand/bladeRF --depth 1 -b 2024.05
 cd bladeRF\host
@@ -356,19 +323,16 @@ cmake --install .
 cd ..\..\..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "bladeRF")
 
-# Not compatible with ARM at this time
 if($platform -eq "x64-windows" -or $platform -eq "x86-windows")
 {
     Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "FX3-SDK")
     Remove-Item -LiteralPath (Join-Path (Get-Location) "FX3-SDK.zip") -Force -ErrorAction SilentlyContinue
+    Write-Output "Skipping UHD build to avoid Boost dependency failure."
+}
 
 cd ..
 Remove-DirectoryWithRetry -Path (Join-Path (Get-Location) "build")
 
-#Install SDRPlay API
-# Optional: www.satdump.org is behind a bot challenge, so a failure here must
-# not abort the dependency build. The plugin CMakeLists skips itself when the
-# API is missing.
 try
 {
     Invoke-WebRequest -Uri "https://www.satdump.org/SDRPlay.zip" -OutFile sdrplay.zip -MaximumRedirection 5
@@ -390,7 +354,7 @@ try
     }
     else
     {
-        Write-Warning "SDRPlay.zip is not a valid ZIP (likely a bot-check page); skipping SDRPlay API install."
+        Write-Warning "SDRPlay.zip is not a valid ZIP; skipping SDRPlay API install."
     }
 }
 catch
@@ -400,15 +364,10 @@ catch
 Remove-Item sdrplay -Force -Recurse -ErrorAction SilentlyContinue
 Remove-Item sdrplay.zip -Force -ErrorAction SilentlyContinue
 
-#Clean Up (Some packages are silly)
 mv installed\$platform\lib\*.dll installed\$platform\bin\
 mv installed\$platform\bin\*.lib installed\$platform\lib\
 cd ..
 
-# The step must succeed: optional components above (UHD, LimeSuite, SDRPlay)
-# are allowed to fail, but a failing native command leaves $LASTEXITCODE set,
-# and PowerShell propagates that as the script's exit code. That is what made
-# "Configure vcpkg" fail on x64 even after UHD was skipped successfully.
 if($LASTEXITCODE -ne 0)
 {
     Write-Warning "Ignoring leftover native exit code $LASTEXITCODE from optional dependency steps."

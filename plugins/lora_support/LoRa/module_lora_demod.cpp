@@ -208,8 +208,8 @@ namespace fengyun4
             int best_idx = 0;
             for (int i = 0; i < bin_num; i++)
             {
-                float m1 = std::abs(ft_out[i]);
-                float m2 = std::abs(ft_out[fft_len - bin_num + i]); // 双侧频谱合并
+                float m1 = std::sqrt(cnorm(ft_out[i]));
+                float m2 = std::sqrt(cnorm(ft_out[fft_len - bin_num + i])); // 双侧频谱合并
                 float m = m1 + m2;
                 if (m > max_val)
                 {

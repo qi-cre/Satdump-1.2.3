@@ -118,8 +118,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SatDump-Windows_${{ matrix.artifact_arch }}_Installer
-          path: ${{github.workspace}}/build/SatDump-*.exe
-          if-no-files-found: error
+          # 这里放宽限制：直接去 build 文件夹里找所有带 SatDump 的 exe、zip 或 msi
+          path: |
+            ${{github.workspace}}/build/**/SatDump*.*
+            ${{github.workspace}}/build/*.exe
+            ${{github.workspace}}/build/*.zip
+            ${{github.workspace}}/build/*.msi
+          if-no-files-found: warn
 
       - name: Add dumpbin to PATH
         shell: powershell

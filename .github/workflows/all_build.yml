@@ -101,30 +101,27 @@ jobs:
           cmake --build "$env:GITHUB_WORKSPACE\build" --config $env:BUILD_TYPE --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Install NSIS
+      - name: Package Build Output
         shell: powershell
         run: |
-          choco install nsis -y
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Build Installer
-        shell: powershell
-        working-directory: ${{github.workspace}}\build
-        run: |
-          cpack -C $env:BUILD_TYPE -G ZIP
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # 创建一个干净的发布文件夹
+          New-Item -ItemType Directory -Force -Path "${{github.workspace}}\dist"
+          
+          # 暴力搜索 build 目录下所有 Release 文件夹里的 exe 和 dll
+          # SatDump 的产物分散在 build/Release, build/plugins/Release 等目录
+          Get-ChildItem -Path "${{github.workspace}}\build" -Include *.exe, *.dll -Recurse | Where-Object { $_.FullName -match "Release" } | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "${{github.workspace}}\dist" -Force
+          }
+          
+          # 用 Windows 自带的命令打包
+          Compress-Archive -Path "${{github.workspace}}\dist\*" -DestinationPath "${{github.workspace}}\SatDump-Windows-x64.zip" -Force
 
       - name: Upload Installer
         uses: actions/upload-artifact@v4
         with:
-          name: SatDump-Windows_${{ matrix.artifact_arch }}_Installer
-          # 这里放宽限制：直接去 build 文件夹里找所有带 SatDump 的 exe、zip 或 msi
-          path: |
-            ${{github.workspace}}/build/**/SatDump*.*
-            ${{github.workspace}}/build/*.exe
-            ${{github.workspace}}/build/*.zip
-            ${{github.workspace}}/build/*.msi
-          if-no-files-found: warn
+          name: SatDump-Windows_x64_Installer
+          path: ${{github.workspace}}\SatDump-Windows-x64.zip
+          if-no-files-found: error
 
       - name: Add dumpbin to PATH
         shell: powershell
